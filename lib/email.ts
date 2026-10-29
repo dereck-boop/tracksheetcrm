@@ -27,6 +27,11 @@ export async function sendEmail(msg: { to: string; subject: string; text: string
     console.log(`[email skipped: not configured] to=${msg.to} subject=${msg.subject}`);
     return { sent: false, error: "Email is not set up" };
   }
+  // Sample data uses @example.com addresses; sending to them would only bounce.
+  if (/@example\.(com|org|net)$/i.test(msg.to.trim())) {
+    console.log(`[email skipped: sample address] to=${msg.to} subject=${msg.subject}`);
+    return { sent: false, error: "That's a sample (@example.com) address" };
+  }
   try {
     // A busy moment (429) or a hiccup at Resend (5xx) gets two more tries before giving up.
     for (let attempt = 0; ; attempt++) {
