@@ -159,6 +159,10 @@ It prints a temporary password for everyone; change it after signing in. Then po
 
 ---
 
+## Licence
+
+TrackSheet CRM is free to use under the [PolyForm Shield License 1.0.0](LICENSE.md): you can run it for your own studio business and change it however you like, but you can't use it to make a product that competes with TrackSheet (for example, reselling it or offering it as a CRM service to other studios).
+
 ## For developers
 
 **Stack:** Next.js 16 (App Router, server actions) · React 19 · TypeScript · PostgreSQL + Prisma 6 · Tailwind CSS 4 · Recharts · Stripe · Resend.
