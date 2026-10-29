@@ -4,7 +4,11 @@
 # Migrations should use the direct connection when it exists.
 set -e
 if [ -z "$DATABASE_URL" ]; then
-  echo "ERROR: DATABASE_URL is not set. In Vercel open Storage, connect a Neon Postgres database to this project (all environments), then redeploy." >&2
+  if [ -n "$STORAGE_URL" ] || [ -n "$POSTGRES_URL" ]; then
+    echo "ERROR: The database is connected, but under a different name. In Vercel open Storage, disconnect the database from this project, connect it again with Custom Prefix DATABASE, then redeploy." >&2
+  else
+    echo "ERROR: DATABASE_URL is not set. In Vercel open Storage, connect a Neon Postgres database to this project with Custom Prefix DATABASE, then redeploy." >&2
+  fi
   exit 1
 fi
 prisma generate

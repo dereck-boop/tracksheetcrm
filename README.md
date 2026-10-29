@@ -51,7 +51,7 @@ Forking (rather than downloading) is what lets you get updates later with one cl
    | `STUDIO_TIMEZONE` | Your timezone, e.g. `America/New_York`, `America/Chicago`, `America/Denver`, `America/Los_Angeles`, `Europe/London`. [Full list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (use the "TZ identifier" column). |
 
 3. Click **Deploy**. The first deploy **will fail** with "DATABASE_URL is not set". That's expected: the database comes next.
-4. Open your new project in Vercel, go to the **Storage** tab, click **Create Database**, choose **Neon** (Serverless Postgres), accept the defaults (free plan, a region near you) and click **Create**. When asked, connect it to **all environments** (Production, Preview, Development).
+4. Open your new project in Vercel, go to the **Storage** tab, click **Create Database**, choose **Neon** (Serverless Postgres), accept the defaults (free plan, a region near you) and click **Create**. On the **Connect a Project** screen that follows, type `DATABASE` in the **Custom Prefix** box (it may show `STORAGE` greyed out) so the variables are named `DATABASE_URL`, keep Production and Preview ticked, and click **Connect**.
 5. Go to **Deployments**, click the **⋯** menu on the latest one and choose **Redeploy**. This time it builds your database tables and goes live (2 to 3 minutes).
 
 Your site's address is shown at the top of the project page, e.g. `https://tracksheet-crm-yourname.vercel.app`.
@@ -152,7 +152,7 @@ It prints a temporary password for everyone; change it after signing in. Then po
 
 | Problem | Fix |
 | --- | --- |
-| Deploy fails with "DATABASE_URL is not set" | Step 2.4: create the Neon database in the Storage tab and connect it to all environments, then redeploy. |
+| Deploy fails with "DATABASE_URL is not set" | Step 2.4: create the Neon database in the Storage tab and connect it with the Custom Prefix `DATABASE`, then redeploy. If you already connected it with another prefix (e.g. `STORAGE`), open Storage → the database → Projects, disconnect it, connect it again with `DATABASE`, then redeploy. |
 | "AUTH_SECRET must be set to at least 32 characters" | Add or lengthen `AUTH_SECRET` in Environment Variables and redeploy. |
 | Setup page says the code doesn't match | Type the exact `SETUP_CODE` from Vercel → Settings → Environment Variables. |
 | No emails arrive | Check `RESEND_API_KEY` and `EMAIL_FROM`, that the domain is Verified in Resend, and use **Send me a test email**. |
