@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* Public pages: black and white, cool grey accent, Oswald headings, Arimo text. */
+@theme {
+  --color-brand-50: #f0f2f3;
+  --color-brand-100: #e1e4e6;
+  --color-brand-500: #4b5257;
+  --color-brand-600: #000000;
+  --color-brand-700: #262626;
+  --color-accent: #c2c8cc;
+  --color-side: #090807;
+  --color-side-hover: #151412;
+  --color-side-active: #1b1917;
+  --color-page: #f5f5f4;
+  --font-sans: "Arimo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Oswald", "Arial Narrow", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Staff app ("Night session" look). The orange is saved for things that need attention. */
+  --color-ember: #fb7000;
+  --color-ink: #0d0c0b;
+  --color-side-line: #201e1b;
+  --color-side-text: #aba59e;
+  --color-side-dim: #8c867f;
+  --color-side-bright: #eeebe6;
+  /* Light-mode values; .qh-app below re-points them per theme. */
+  --color-line: #e4e0da;
+  --color-ember-text: #b04a00;
+  --color-ember-soft: #fff1e5;
+}
+
+/*
+ * The staff app (everything inside .qh-app) re-points Tailwind's neutral colors, so the same
+ * gray-500 / bg-white / text-black classes come out warm in light mode and inverted in dark mode.
+ * Public pages (booking, invoices, quotes, client pages) sit outside .qh-app and keep the website look.
+ */
+.qh-app {
+  --color-page: #f3f1ed;
+  --color-white: #ffffff;
+  --color-black: #141210;
+  --color-gray-50: #f8f6f3;
+  --color-gray-100: #efece8;
+  --color-gray-200: #e4e0da;
+  --color-gray-300: #d2cdc6;
+  --color-gray-400: #9f9992;
+  --color-gray-500: #6f6963;
+  --color-gray-600: #5a554f;
+  --color-gray-700: #45413c;
+  --color-gray-800: #2d2a27;
+  --color-gray-900: #1c1a18;
+  --color-gray-950: #110f0e;
+  --color-brand-50: #f1eee9;
+  --color-brand-100: #e4e0da;
+  --color-brand-500: #6f6963;
+  --color-brand-600: #141210;
+  --color-brand-700: #2d2a27;
+  --color-line: #e4e0da;
+  --color-ember-text: #b04a00;
+  --color-ember-soft: #fff1e5;
+  --shadow-card: 0 1px 2px rgb(20 18 16 / 0.04);
+}
+.qh-app[data-theme="dark"] {
+  color-scheme: dark;
+  --color-page: #0d0c0b;
+  --color-white: #151412;
+  --color-black: #eeebe6;
+  --color-gray-50: #1b1917;
+  --color-gray-100: #221f1c;
+  --color-gray-200: #2a2724;
+  --color-gray-300: #3a3631;
+  --color-gray-400: #77716a;
+  --color-gray-500: #99938b;
+  --color-gray-600: #aba59e;
+  --color-gray-700: #c4beb7;
+  --color-gray-800: #dad5cf;
+  --color-gray-900: #eeebe6;
+  --color-gray-950: #f6f4f1;
+  --color-brand-50: #1f1d1b;
+  --color-brand-100: #2a2724;
+  --color-brand-500: #99938b;
+  --color-brand-600: #eeebe6;
+  --color-brand-700: #dad5cf;
+  --color-line: #262320;
+  --color-ember-text: #fb8a2e;
+  --color-ember-soft: #2a1806;
+  --shadow-card: none;
+  /* Status tints: dark backgrounds with light text instead of pastel chips. */
+  --color-red-50: #2a1513; --color-red-100: #3a1b18; --color-red-200: #5a2a24; --color-red-300: #7a3a32;
+  --color-red-400: #e2735f; --color-red-500: #ec7a66; --color-red-600: #f08a76; --color-red-700: #f4a091; --color-red-800: #f7b5a9;
+  --color-amber-50: #2a2010; --color-amber-200: #5a4520; --color-amber-500: #e0a33a; --color-amber-600: #e9b04d;
+  --color-amber-700: #efbe68; --color-amber-800: #f2c87d; --color-amber-900: #f5d496;
+  --color-emerald-50: #13241b; --color-emerald-200: #2c4a38; --color-emerald-500: #4fae78;
+  --color-emerald-700: #8fd3a8; --color-emerald-800: #a4dcb8; --color-emerald-900: #b9e5c8;
+  --color-green-50: #13241b; --color-green-200: #2c4a38; --color-green-800: #a4dcb8;
+  --color-sky-50: #12202a; --color-sky-700: #93c9ee;
+  --color-violet-50: #211a2e; --color-violet-200: #3e3356; --color-violet-700: #c9b5f5; --color-violet-800: #d6c7f7;
+}
+/* Paper is paper: printing from the app always uses the light colors. */
+@media print {
+  .qh-app[data-theme="dark"] {
+    color-scheme: light;
+    --color-page: #ffffff; --color-white: #ffffff; --color-black: #141210;
+    --color-gray-50: #f8f6f3; --color-gray-100: #efece8; --color-gray-200: #e4e0da; --color-gray-300: #d2cdc6; --color-gray-400: #9f9992;
+    --color-gray-500: #6f6963; --color-gray-600: #5a554f; --color-gray-700: #45413c; --color-gray-800: #2d2a27; --color-gray-900: #1c1a18;
+    --color-brand-600: #141210; --color-line: #e4e0da;
+  }
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded border-2 border-transparent px-3.5 py-1.5 text-sm transition disabled:opacity-50;
+}
+
+@layer base {
+  h1, h2 { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.02em; }
+  /* iOS Safari gives date/time pickers a fixed native width that ignores w-full, so they spill out of narrow cards. */
+  fieldset { min-width: 0; }
+  input[type="date"], input[type="time"], input[type="datetime-local"] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; min-height: 2.5rem; }
+  input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; }
+}
+
+@layer components {
+  .card { @apply rounded-md border border-gray-200 bg-white shadow-sm; }
+  .label { @apply mb-1 block text-[11px] uppercase tracking-[0.14em] text-gray-500; }
+  .input { @apply w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-accent/60; }
+  .btn-primary { @apply btn border-black bg-black text-white hover:border-brand-700 hover:bg-brand-700; }
+  .btn-secondary { @apply btn border-black bg-white text-black hover:bg-brand-50; }
+  .btn-danger { @apply btn border-red-300 bg-white text-red-600 hover:bg-red-50; }
+  .btn-sm { @apply border px-2.5 py-1 text-xs; }
+  .link { @apply text-black underline decoration-gray-400 underline-offset-2 hover:decoration-black; }
+  .section-title { @apply mb-2 font-sans tracking-[0.16em] text-[11px] font-bold uppercase text-gray-500; }
+  .data-table { @apply w-full text-left text-sm; }
+  .data-table th { @apply border-b border-gray-200 px-4 py-2.5 text-[11px] font-normal uppercase tracking-[0.14em] text-gray-500; }
+  .data-table td { @apply border-b border-gray-100 px-4 py-3 text-gray-700; }
+  .data-table tr:hover td { @apply bg-gray-50; }
+
+  /* Staff app sizes: 14px cards, pill buttons, 36px fields, small lowercase mono labels. */
+  .qh-app .card { @apply rounded-[14px] border-line bg-white shadow-[var(--shadow-card)]; }
+  .qh-app :is(.btn, .btn-primary, .btn-secondary, .btn-danger) { @apply h-[38px] rounded-full border px-4 py-0 text-[13px]; }
+  .qh-app .btn-primary { @apply border-ember bg-ember font-bold text-ink hover:border-[#ff8a2b] hover:bg-[#ff8a2b]; }
+  .qh-app .btn-secondary { @apply border-gray-300 bg-transparent text-black hover:border-gray-400 hover:bg-gray-50; }
+  .qh-app .btn-danger { @apply border-red-300 bg-transparent text-red-600 hover:bg-red-50; }
+  .qh-app .btn-sm { @apply h-[30px] px-3 text-xs; }
+  .qh-app .input { @apply min-h-9 rounded-lg border-gray-200 bg-gray-50 px-3 py-1.5 text-[13.5px] shadow-none focus:border-ember focus:ring-2 focus:ring-ember/25; }
+  .qh-app .label { @apply mb-1.5 font-mono text-[10.5px] lowercase tracking-[0.08em] text-gray-500; }
+  .qh-app .section-title { @apply mb-2.5 mt-1 font-mono text-[10.5px] font-normal lowercase tracking-[0.08em] text-gray-500; }
+  .qh-app .link { @apply decoration-gray-300 hover:decoration-ember; }
+  .qh-app .data-table th { @apply border-line font-mono text-[10.5px] lowercase tracking-[0.08em]; }
+  .qh-app .data-table td { @apply border-gray-100 text-gray-800; }
+  .qh-app h1 { letter-spacing: -0.025em; }
+}
+
+body { @apply bg-page text-gray-900 antialiased; }
+.qh-app { @apply bg-page text-[13.5px] text-gray-900; accent-color: var(--color-ember); }
+/* Paints the area around the app (overscroll, short pages) to match the theme. */
+body:has(#qh-app[data-theme="dark"]) { background: #0d0c0b; }
+body:has(#qh-app[data-theme="light"]) { background: #f3f1ed; }
+
+/* Phones: iPhone Safari zooms the whole page in when a field under 16px is tapped, so fields use 16px there. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
+  /* Wide tables scroll sideways inside their card instead of pushing the whole page wider than the screen. */
+  .data-table { display: block; overflow-x: auto; }
+  /* Grid columns may shrink to the screen; without this one wide child stretches the whole page. */
+  .grid > * { min-width: 0; }
+}
