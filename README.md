@@ -60,7 +60,10 @@ Your site's address is shown at the top of the project page, e.g. `https://track
 
 1. Open your site's address. You'll land on **Welcome! Set up your studio**.
 2. Enter your studio name, your name, email, a password (10+ characters) and the `SETUP_CODE` you chose.
-3. You're in. The setup page locks itself after this first account.
+3. Leave **Add sample clients, bookings, projects and invoices** unticked for your real studio. Tick it only on a test copy (see below).
+4. You're in. The setup page locks itself after this first account.
+
+> **Just want to look around first?** Do a test copy: follow steps 1–3 with the Vercel project named something like `tracksheet-test`, and tick the sample-data box in step 3. You'll get rooms, a price list, clients, a band, two projects, this week's bookings, a booking request, to-dos and two invoices. Sample clients use @example.com addresses, so no email ever goes to them. When you're done, delete the test project in Vercel (Settings → scroll down → Delete Project) and its Neon database (Storage tab), then set up your real copy fresh.
 
 Then, in the sidebar:
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { createSession, hashPassword } from "@/lib/auth";
 import { DEFAULT_BOOKING_TYPES, DEFAULT_EMAIL_TEMPLATES } from "@/lib/defaults";
+import { addDemoData } from "@/lib/demoData";
 
 /** First-run: create the studio and its owner account. Disabled once any user exists. */
 async function setup(_: string | null, fd: FormData) {
@@ -19,13 +20,15 @@ async function setup(_: string | null, fd: FormData) {
   if (code && String(fd.get("code") ?? "").trim() !== code) return "That setup code doesn't match the SETUP_CODE you chose when deploying.";
   if (password.length < 10) return "Use a password of at least 10 characters.";
 
+  // "Add sample data" is for test copies: the sample data brings its own rooms.
+  const demo = fd.get("demo") === "on";
   const slug = studioName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "studio";
   const studio = await db.studio.create({
     data: {
       name: studioName,
       slug,
       email,
-      rooms: { create: [{ name: "Studio A", sortOrder: 0 }] },
+      rooms: demo ? undefined : { create: [{ name: "Studio A", sortOrder: 0 }] },
       bookingTypes: { create: DEFAULT_BOOKING_TYPES },
       emailTemplates: { create: DEFAULT_EMAIL_TEMPLATES },
     },
@@ -33,6 +36,7 @@ async function setup(_: string | null, fd: FormData) {
   const user = await db.user.create({
     data: { studioId: studio.id, name, email, role: "OWNER", passwordHash: await hashPassword(password) },
   });
+  if (demo) await addDemoData(db, studio.id, user.id);
   await createSession({ userId: user.id, studioId: studio.id, role: user.role });
   redirect("/dashboard");
 }
