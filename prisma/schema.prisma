@@ -1,0 +1,688 @@
+// TrackSheet CRM data model.
+// Money is stored in integer cents. Every table carries a studioId; one copy of the app
+// runs one studio.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Studio & users ──────────────────────────────────────────────
+
+model Studio {
+  id                   String    @id @default(cuid())
+  name                 String
+  slug                 String    @unique
+  timezone             String    @default("America/New_York")
+  currency             String    @default("USD")
+  email                String?
+  phone                String?
+  address              String?
+  logoUrl              String?
+  calendarToken        String?   @unique // secret for the calendar feed at /cal/<token>; reset to revoke
+  invoicePrefix        String    @default("INV-")
+  quotePrefix          String    @default("Q-")
+  nextInvoiceNo        Int       @default(1001)
+  nextQuoteNo          Int       @default(1001)
+  defaultTaxRate       Decimal   @default(0) @db.Decimal(5, 2)
+  depositPercent       Int       @default(50) // default booking deposit %
+  depositMinimum       Int       @default(0) // cents; no automatic deposit on sessions under this
+  emailSignOff         String? // name under "Thank you," in client emails; falls back to the studio name
+  invoiceTerms         String? // default terms on new invoices
+  quoteTerms           String? // default terms on new quotes
+  paymentInstructions  String? // other ways to pay (Venmo, Zelle, check), shown on invoices
+  policies             String? // cancellation / late policy, shown on quotes and invoices
+  autoInvoiceOnAccept  Boolean   @default(true) // accepting a quote creates and emails the invoice
+  reminderDaysBefore   Int       @default(3) // payment reminder this many days before the due date (0 = off)
+  reminderEveryDays    Int       @default(7) // overdue reminders every N days (0 = off)
+  // Cancellations and no-shows
+  lateCancelHours      Int       @default(48) // cancelling with less notice than this is "late"
+  lateCancelFeePercent Int       @default(0) // % of the session total charged on a late cancel (a paid deposit counts toward it)
+  noShowFeePercent     Int       @default(100) // % of the session total charged on a no-show
+  // Taxes
+  // Client paperwork and follow-ups
+  // Backups and Google Calendar
+  backupWeekly         Boolean   @default(true) // email a backup of the data every Monday
+  lastBackupAt         DateTime?
+  // Growth: content, social, audience
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  users          User[]
+  contacts       Contact[]
+  artists        Artist[]
+  events         Event[]
+  rooms          Room[]
+  bookings       Booking[]
+  projects       Project[]
+  tasks          Task[]
+  services       Service[]
+  quotes         Quote[]
+  invoices       Invoice[]
+  payments       Payment[]
+  activities     Activity[]
+  noteLog        Note[]
+  bookingTypes   BookingType[]
+  bookingSeries  BookingSeries[]
+  emailTemplates EmailTemplate[]
+  notifications  Notification[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ENGINEER
+  ASSISTANT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  studioId      String
+  studio        Studio    @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          Role      @default(ENGINEER)
+  color         String    @default("#2f7d6d") // calendar color
+  active        Boolean   @default(true)
+  // Two-step login (authenticator app codes)
+  totpSecret    String? // base32; set while setting up, active once totpEnabledAt is set
+  totpEnabledAt DateTime?
+  recoveryCodes String[] // bcrypt hashes of one-time backup codes
+  totpLastStep  Int? // the last authenticator code used, so the same code can't sign in twice
+  // Sign-in protection: wrong passwords or codes in a row, and the lock they set
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime?
+  // Bumped by "Sign out everywhere" and password changes; older sessions stop working
+  sessionVersion Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  engineerBookings Booking[]           @relation("BookingEngineer")
+  managedProjects  Project[]           @relation("ProjectManager")
+  assignedTasks    Task[]              @relation("TaskAssignee")
+  activities       Activity[]
+  noteLog          Note[]
+  notifications    Notification[]
+  createdTasks     Task[]              @relation("TaskCreator")
+}
+
+// ─── CRM ──────────────────────────────────────────────────────────
+
+model Contact {
+  id                   String       @id @default(cuid())
+  studioId             String
+  studio               Studio       @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  firstName            String
+  lastName             String?
+  email                String?
+  phone                String?
+  role                 String? // artist, producer, manager, A&R…
+  stripeCustomerId     String?
+  portalToken          String?      @unique // client portal access (file delivery/review)
+  notes                String?
+  tags                 String[]
+  source               String? // how they found the studio: Instagram, referral, website…
+  // Producers and engineers who send the studio work: their own private page (/producer/<token>); null = no access
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  artists       ArtistMember[]
+  bookings      Booking[]
+  projects      Project[]           @relation("ProjectClient")
+  quotes        Quote[]
+  invoices      Invoice[]
+  noteLog       Note[]
+  tasks         Task[]
+
+  @@index([studioId, lastName])
+  @@index([studioId, email])
+}
+
+model Artist {
+  id         String   @id @default(cuid())
+  studioId   String
+  studio     Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  name       String
+  kind       String   @default("Artist") // Artist, Band, Group, Choir…
+  genre      String?
+  website    String?
+  notes      String?
+  // The member who handles money: the only one who sees invoices, quotes and deposits on the band page
+  // The producer or engineer who sent this artist to the studio
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  members      ArtistMember[]
+  projects     Project[]
+  noteLog      Note[]
+
+  @@index([studioId, name])
+}
+
+model ArtistMember {
+  artistId  String
+  artist    Artist  @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      String?
+
+  @@id([artistId, contactId])
+}
+
+// Links and notes the studio shares on band pages: one band, or every band when artistId is empty
+// Messages on a band page: from a member (contactId) or from the studio (userId)
+// Custom web forms that create leads (embeddable on the studio website)
+model Event {
+  id            String    @id @default(cuid())
+  studioId      String
+  studio        Studio    @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  title         String
+  kind          String    @default("Meeting") // see EVENT_KINDS in lib/events.ts
+  startsAt      DateTime
+  endsAt        DateTime // exclusive; all-day events end at midnight after their last day
+  allDay        Boolean   @default(false)
+  closed        Boolean   @default(false) // studio closed: online booking requests are refused on these days
+  location      String?
+  notes         String?
+  projectId     String? // e.g. the record a release date belongs to
+  project       Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([studioId, startsAt])
+  @@index([projectId])
+}
+
+// ─── Studio: rooms, bookings, projects, tasks ─────────────────────
+
+// Shown as "Studios" in the app: each place sessions happen, your own room or another studio you book.
+model Room {
+  id            String   @id @default(cuid())
+  studioId      String
+  studio        Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  name          String
+  address       String?
+  onlineBooking Boolean  @default(true) // offered on the public booking page
+  description   String?
+  color         String   @default("#2f7d6d")
+  hourlyRate    Int? // cents
+  dayRate       Int? // cents
+  capacity      Int?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bookings Booking[]
+}
+
+enum BookingStatus {
+  REQUESTED // came in through the online booking form
+  HOLD // penciled in, awaiting deposit
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  DECLINED
+  NO_SHOW
+}
+
+model Booking {
+  id               String         @id @default(cuid())
+  studioId         String
+  studio           Studio         @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  title            String
+  status           BookingStatus  @default(HOLD)
+  typeId           String?
+  type             BookingType?   @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  seriesId         String? // set for recurring bookings
+  series           BookingSeries? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  serviceId        String? // package chosen on the online booking form
+  service          Service?       @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  reminderSentAt   DateTime?
+  roomId           String
+  room             Room           @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  startsAt         DateTime
+  endsAt           DateTime
+  contactId        String?
+  contact          Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  engineerId       String?
+  engineer         User?          @relation("BookingEngineer", fields: [engineerId], references: [id], onDelete: SetNull)
+  // Online booking request details
+  requestName      String? // first + last, for lists and titles
+  requestFirstName String?
+  requestLastName  String?
+  requestEmail     String?
+  requestPhone     String?
+  requestArtist    String? // artist, band or project name
+  requestSocial    String? // Instagram / social media link
+  requestService   String? // Mastering, Mixing, Recording/Tracking or Consult
+  requestNotes     String?
+  // Deposit
+  rate             Int? // cents, total quoted for the session
+  depositAmount    Int? // cents
+  timeTbd          Boolean        @default(false) // online request: client picked the day, studio sets the hours
+  depositPaidAt    DateTime?
+  depositInvoiceId String?        @unique
+  depositInvoice   Invoice?       @relation("BookingDeposit", fields: [depositInvoiceId], references: [id], onDelete: SetNull)
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  followUpSentAt    DateTime? // thank-you email after the session
+  invoiceId         String? // the invoice this session was billed on
+  invoice           Invoice?               @relation("BookingInvoice", fields: [invoiceId], references: [id], onDelete: SetNull)
+  // Cancellations and no-shows
+  cancelledAt       DateTime?
+  cancelNoticeHours Int? // hours between cancelling and the session start
+  cancelReason      String?
+  rescheduleCount   Int                    @default(0)
+  feeInvoiceId      String? // late-cancel / no-show fee
+  feeInvoice        Invoice?               @relation("BookingFee", fields: [feeInvoiceId], references: [id], onDelete: SetNull)
+  // Pre-session questionnaire
+
+  @@index([studioId, startsAt])
+  @@index([roomId, startsAt])
+}
+
+// Custom session/event types (Tracking, Mixing, Rehearsal, Podcast, Maintenance…)
+model BookingType {
+  id        String @id @default(cuid())
+  studioId  String
+  studio    Studio @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  name      String
+  color     String @default("#2f7d6d")
+  sortOrder Int    @default(0)
+
+  bookings Booking[]
+}
+
+// Recurring bookings: one series expands into concrete Booking rows
+model BookingSeries {
+  id        String   @id @default(cuid())
+  studioId  String
+  studio    Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  rrule     String // RFC 5545, e.g. FREQ=WEEKLY;BYDAY=TU;COUNT=8
+  createdAt DateTime @default(now())
+
+  bookings Booking[]
+}
+
+// Project songs worked on in a session
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  REVIEW
+  DELIVERED
+  CLOSED
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  studioId        String
+  studio          Studio        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  name            String
+  type            String? // Single, EP, Album, Podcast, Mix only, Master only…
+  status          ProjectStatus @default(PLANNING)
+  clientId        String?
+  client          Contact?      @relation("ProjectClient", fields: [clientId], references: [id], onDelete: SetNull)
+  artistId        String?
+  artist          Artist?       @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  managerId       String?
+  manager         User?         @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  startDate       DateTime?
+  dueDate         DateTime?
+  budget          Int? // cents
+  description     String?
+  // Who sent this one project when it isn't the artist's usual producer (empty = the artist's "Sent by")
+  // What the studio did on the project, for the credit line in credits and the release kit
+  // Wrap-up and session file archive
+  deliveredAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  milestones   Milestone[]
+  tasks        Task[]
+  bookings     Booking[]
+  quotes       Quote[]
+  invoices     Invoice[]
+  tracks       Track[]
+  noteLog      Note[]
+  events       Event[]
+
+  @@index([studioId, status])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime?
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+  // Optional billing tie-in: invoice this amount when the milestone is hit
+  billAmount  Int? // cents
+  invoiceId   String?
+  invoice     Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  tasks Task[]
+}
+
+// Songs / episodes inside a project, each moving through production stages
+model Track {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  stage     String   @default("Tracking") // Pre-pro, Tracking, Editing, Mixing, Mastering, Done
+  bpm       Int?
+  key       String?
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+}
+
+// Who did what on a song (recording engineer, mixer, bass…), for liner notes and release metadata
+// Songwriting / publishing split sheet entry; each writer signs their own link
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  studioId       String
+  studio         Studio     @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  title          String
+  status         TaskStatus @default(TODO)
+  priority       Int        @default(2) // 1 high, 2 normal, 3 low
+  dueDate        DateTime?
+  projectId      String?
+  project        Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId    String?
+  milestone      Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  contactId      String?
+  contact        Contact?   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assigneeId     String?
+  assignee       User?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById    String?
+  createdBy      User?      @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  remindAt       DateTime?
+  reminderSentAt DateTime?
+  notes          String?
+  completedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([studioId, status])
+}
+
+// A piece of timed work for a band/artist (e.g. "Mix song 3"). Each start/pause is a TimeEntry.
+// Gear reserved on a booking (conflict-checked against overlapping bookings)
+// Damage / maintenance log
+// ─── Financials ───────────────────────────────────────────────────
+
+// Price list: hourly room rates, mix per song, mastering per track…
+model Service {
+  id             String   @id @default(cuid())
+  studioId       String
+  studio         Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  unit           String   @default("hour") // hour, day, song, track, flat
+  unitPrice      Int // cents
+  taxable        Boolean  @default(true)
+  active         Boolean  @default(true)
+  bookable       Boolean  @default(false) // offered on the online booking form
+  durationMin    Int? // default session length for bookable packages
+  depositPercent Int? // overrides the studio default; 0 = never take a deposit
+  roomIds        String[] // rooms this package can be booked in (empty = all)
+  createdAt      DateTime @default(now())
+
+  bookings Booking[]
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model Quote {
+  id             String      @id @default(cuid())
+  studioId       String
+  studio         Studio      @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  number         String
+  status         QuoteStatus @default(DRAFT)
+  contactId      String?
+  contact        Contact?    @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  issueDate      DateTime    @default(now())
+  validUntil     DateTime?
+  notes          String?
+  terms          String?
+  taxRate        Decimal     @default(0) @db.Decimal(5, 2)
+  discount       Int         @default(0) // cents
+  publicToken    String      @unique @default(cuid()) // client view/accept link
+  acceptedAt     DateTime?
+  acceptedName   String? // name the client typed when accepting
+  acceptedTerms  String? // terms and policies text they agreed to
+  acceptedIp     String?
+  sentAt         DateTime?
+  reminderSentAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  items   QuoteItem[]
+  invoice Invoice?
+
+  @@unique([studioId, number])
+}
+
+model QuoteItem {
+  id          String  @id @default(cuid())
+  quoteId     String
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice   Int // cents
+  taxable     Boolean @default(true)
+  sortOrder   Int     @default(0)
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  VOID
+}
+
+model Invoice {
+  id                 String        @id @default(cuid())
+  studioId           String
+  studio             Studio        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  number             String
+  status             InvoiceStatus @default(DRAFT)
+  contactId          String?
+  contact            Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  projectId          String?
+  project            Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  quoteId            String?       @unique
+  quote              Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  issueDate          DateTime      @default(now())
+  dueDate            DateTime?
+  notes              String?
+  terms              String?
+  taxRate            Decimal       @default(0) @db.Decimal(5, 2)
+  discount           Int           @default(0) // cents
+  total              Int           @default(0) // cents, denormalized for reporting
+  amountPaid         Int           @default(0) // cents, denormalized
+  publicToken        String        @unique @default(cuid()) // client pay link
+  isDeposit          Boolean       @default(false)
+  depositPercent     Int? // ask for this % first on the pay link, then the rest; null = full balance
+  sentAt             DateTime?
+  paidAt             DateTime?
+  remindersPaused    Boolean       @default(false)
+  lastReminderAt     DateTime?
+  reminderCount      Int           @default(0)
+  // On a paid booking deposit: the invoice it was credited on
+  depositAppliedToId String?
+  depositAppliedTo   Invoice?      @relation("DepositCredit", fields: [depositAppliedToId], references: [id], onDelete: SetNull)
+  depositForfeited   Boolean       @default(false) // kept under the cancellation policy: never credited on a later invoice
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  depositCredits Invoice[]     @relation("DepositCredit")
+  bookings       Booking[]     @relation("BookingInvoice")
+  items          InvoiceItem[]
+  payments       Payment[]
+  milestones     Milestone[]
+  depositBooking Booking?      @relation("BookingDeposit")
+  views          InvoiceView[]
+  feeBookings    Booking[]     @relation("BookingFee")
+
+  @@unique([studioId, number])
+  @@index([studioId, status])
+}
+
+/// A client opening the public /i/<token> page (signed-in team visits aren't counted).
+model InvoiceView {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  viewedAt  DateTime @default(now())
+  userAgent String?
+
+  @@index([invoiceId, viewedAt])
+}
+
+model InvoiceItem {
+  id          String                 @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice                @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal                @default(1) @db.Decimal(10, 2)
+  unitPrice   Int // cents
+  taxable     Boolean                @default(true)
+  sortOrder   Int                    @default(0)
+}
+
+enum PaymentMethod {
+  STRIPE
+  CASH
+  CHECK
+  BANK_TRANSFER
+  VENMO
+  PAYPAL
+  OTHER
+}
+
+model Payment {
+  id                      String        @id @default(cuid())
+  studioId                String
+  studio                  Studio        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  invoiceId               String
+  invoice                 Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount                  Int // cents
+  method                  PaymentMethod @default(STRIPE)
+  receivedAt              DateTime      @default(now())
+  reference               String?
+  stripePaymentIntentId   String?       @unique
+  stripeCheckoutSessionId String?       @unique
+  refundedAmount          Int           @default(0)
+  feeAmount               Int? // cents Stripe kept as its processing fee
+  notes                   String?
+  createdAt               DateTime      @default(now())
+
+  @@index([studioId, receivedAt])
+}
+
+// ─── Team ─────────────────────────────────────────────────────────
+
+model Activity {
+  id         String   @id @default(cuid())
+  studioId   String
+  studio     Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entityType String // lead, contact, project, booking, invoice…
+  entityId   String
+  action     String // created, updated, status_changed, paid…
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([studioId, entityType, entityId])
+  @@index([studioId, createdAt])
+}
+
+// Conversation log on contacts, artists and projects
+model Note {
+  id        String   @id @default(cuid())
+  studioId  String
+  studio    Studio   @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kind      String   @default("note") // note, call, email, meeting, text
+  body      String
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  artistId  String?
+  artist    Artist?  @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([studioId, createdAt])
+}
+
+// Editable automated emails (booking confirmation, 24h reminder, reschedule, cancel, invoice…)
+model EmailTemplate {
+  id       String  @id @default(cuid())
+  studioId String
+  studio   Studio  @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  key      String // booking_confirmed, booking_reminder, booking_changed, booking_cancelled…
+  subject  String
+  body     String // supports {{placeholders}}
+  enabled  Boolean @default(true)
+
+  @@unique([studioId, key])
+}
+
+// In-app notifications (task reminders, booking requests, payments)
+model Notification {
+  id        String    @id @default(cuid())
+  studioId  String
+  studio    Studio    @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
