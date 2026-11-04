@@ -133,6 +133,27 @@ export const EMAIL_TEMPLATES = {
     subject: "Your page with {{studio_name}}",
     body: "Hi {{client_name}},\n\nHere's your private page with us. It shows your upcoming sessions, invoices and what you've paid, and where your project is at:\n{{client_page}}\n\nBookmark it; it's always up to date.\n\nThank you,\n{{sign_off}}",
   },
+  split_sheet: {
+    label: "Split sheet to sign",
+    when: "You send a song's split sheet. Each writer gets their own link.",
+    vars: ["client_name", "song", "artist", "link"],
+    subject: "Split sheet for \"{{song}}\": please review and sign",
+    body: "Hi {{client_name}},\n\nHere's the songwriting split sheet for \"{{song}}\" ({{artist}}). Please check your share, add your PRO and IPI number if you have them, and sign:\n{{link}}\n\nOnce everyone signs, each writer gets a copy for their records.\n\nThank you,\n{{sign_off}}",
+  },
+  split_sheet_done: {
+    label: "Split sheet signed by everyone",
+    when: "The last writer signs a song's split sheet. Everyone on it gets a copy.",
+    vars: ["client_name", "song", "artist", "link"],
+    subject: "Split sheet for \"{{song}}\" is signed",
+    body: "Hi {{client_name}},\n\nEveryone has signed the split sheet for \"{{song}}\" ({{artist}}). Here's your copy to keep (you can print it or save it as a PDF):\n{{link}}\n\nThank you,\n{{sign_off}}",
+  },
+  session_release: {
+    label: "Session player release to sign",
+    when: "You send a session player their release (work for hire) from a project.",
+    vars: ["client_name", "project", "artist", "fee", "link"],
+    subject: "Your session release for \"{{project}}\"",
+    body: "Hi {{client_name}},\n\nThanks for playing on \"{{project}}\" ({{artist}}). Here's the short session release confirming your {{fee}} flat fee and the credit. Please read it and sign here:\n{{link}}\n\nThank you,\n{{sign_off}}",
+  },
 } as const;
 
 export type TemplateKey = keyof typeof EMAIL_TEMPLATES;

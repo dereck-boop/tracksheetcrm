@@ -3,7 +3,7 @@ import { safe } from "@/lib/safeAction";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireRole, requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { req, str } from "@/lib/form";
 import { fullName } from "@/lib/format";
@@ -121,6 +121,18 @@ const addContactToArtistAction = safe(addContactToArtist);
 const removeContactFromArtistAction = safe(removeContactFromArtist);
 const mergeContactAction = safe(mergeContact);
 const importContactsAction = safe(importContacts);
+/** Payee details: typed once here, filled into split sheets, session releases and label copy. */
+async function savePayee(fd: FormData) {
+  const user = await requireRole("ADMIN");
+  const id = req(fd, "id");
+  await db.contact.updateMany({
+    where: { id, studioId: user.studioId },
+    data: { legalName: str(fd, "legalName"), address: str(fd, "address"), pro: str(fd, "pro"), ipi: str(fd, "ipi")?.replace(/\s/g, "") ?? null, publisher: str(fd, "publisher") },
+  });
+  revalidatePath(`/contacts/${id}`);
+}
+
+const savePayeeAction = safe(savePayee);
 const emailClientPageAction = safe(emailClientPage);
 const resetClientPageAction = safe(resetClientPage);
-export { createContactAction as createContact, updateContactAction as updateContact, deleteContactAction as deleteContact, addContactToArtistAction as addContactToArtist, removeContactFromArtistAction as removeContactFromArtist, mergeContactAction as mergeContact, importContactsAction as importContacts, emailClientPageAction as emailClientPage, resetClientPageAction as resetClientPage };
+export { createContactAction as createContact, updateContactAction as updateContact, deleteContactAction as deleteContact, addContactToArtistAction as addContactToArtist, removeContactFromArtistAction as removeContactFromArtist, mergeContactAction as mergeContact, importContactsAction as importContacts, emailClientPageAction as emailClientPage, resetClientPageAction as resetClientPage, savePayeeAction as savePayee };

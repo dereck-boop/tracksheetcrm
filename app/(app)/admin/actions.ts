@@ -104,6 +104,7 @@ async function saveStudio(fd: FormData) {
       lateCancelFeePercent: days("lateCancelFeePercent", 100, 0),
       noShowFeePercent: days("noShowFeePercent", 100, 100),
       backupWeekly: fd.get("backupWeekly") !== null,
+      sessionReleaseText: str(fd, "sessionReleaseText"),
       ...(await logoField(fd)),
     },
   });

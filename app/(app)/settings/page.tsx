@@ -3,6 +3,7 @@ import { fmtDateTime, TZ } from "@/lib/format";
 import { Card, EmailFlash, Field, PageHeader } from "@/components/ui";
 import { emailBackupNow, saveStudio } from "../admin/actions";
 import { BookingPageLink } from "@/components/BookingPageLink";
+import { DEFAULT_SESSION_RELEASE, RELEASE_VARS } from "@/lib/forms";
 
 export const metadata = { title: "Settings" };
 
@@ -52,6 +53,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <Field label="Late cancellation fee (% of the session total)"><input name="lateCancelFeePercent" type="number" min={0} max={100} defaultValue={studio.lateCancelFeePercent} className="input" /></Field>
           <Field label="No-show fee (% of the session total)"><input name="noShowFeePercent" type="number" min={0} max={100} defaultValue={studio.noShowFeePercent} className="input" /></Field>
           <p className="text-sm text-gray-500 sm:col-span-2 sm:self-end">On a late cancel or no-show the deposit is kept, and any fee beyond it goes on a fee invoice. You choose each time whether to apply the rule, keep only the deposit, or let it go. Put the same rule in Studio policies above so clients see it.</p>
+          <h2 className="border-t border-gray-100 pt-4 text-lg text-black sm:col-span-2">Session player release</h2>
+          <div className="space-y-2 sm:col-span-2">
+            <p className="text-sm text-gray-500">The work-for-hire release a session player signs from a project. It&apos;s a plain starting template, not legal advice: have a lawyer look it over once and change it here. Leave it blank to use the built-in wording. Fill-ins: {RELEASE_VARS.map((v) => `{{${v}}}`).join(" ")}</p>
+            <textarea name="sessionReleaseText" aria-label="Session player release" rows={12} defaultValue={studio.sessionReleaseText ?? ""} placeholder={DEFAULT_SESSION_RELEASE} className="input font-mono text-xs" />
+            <p className="text-xs text-gray-500">Players who already signed keep the exact wording they signed.</p>
+          </div>
           <label className="flex items-start gap-2 border-t border-gray-100 pt-4 text-sm sm:col-span-2">
             <input type="checkbox" name="backupWeekly" defaultChecked={studio.backupWeekly} className="mt-1" />
             <span>Email me a backup of all my data every Monday.</span>

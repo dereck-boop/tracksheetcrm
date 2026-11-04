@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { canSeeMoney, requireUser } from "@/lib/auth";
+import { CONTRACTOR_1099_LIMIT, paidInYear, PROS } from "@/lib/forms";
+import { inTz } from "@/lib/format";
 import { fmtDate, fmtDateTime, fullName, money } from "@/lib/format";
 import { bookingTone, projectTone } from "@/lib/status";
 import { ContactForm } from "@/components/ContactForm";
@@ -12,7 +14,7 @@ import { nameDistance } from "@/lib/mergeContacts";
 import { clientPageUrl } from "@/lib/clientPage";
 import { CopyLink } from "@/components/CopyLink";
 import { clientHistory, historyLine } from "@/lib/cancellations";
-import { addContactToArtist, deleteContact, emailClientPage, mergeContact, removeContactFromArtist, resetClientPage, updateContact } from "../actions";
+import { addContactToArtist, deleteContact, emailClientPage, mergeContact, removeContactFromArtist, resetClientPage, savePayee, updateContact } from "../actions";
 
 export default async function ContactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ merged?: string; emailed?: string; email_error?: string }> }) {
   const user = await requireUser();
@@ -25,10 +27,14 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
       projects: { orderBy: { createdAt: "desc" } },
       bookings: { orderBy: { startsAt: "desc" }, take: 10, include: { room: true } },
       invoices: { orderBy: { issueDate: "desc" }, take: 10 },
+      sessionHires: { orderBy: { createdAt: "desc" }, include: { project: { select: { id: true, name: true } } } },
     },
   });
   if (!contact) notFound();
   const path = `/contacts/${id}`;
+  const seesMoney = canSeeMoney(user.role);
+  const year = inTz(new Date()).getFullYear();
+  const paidThisYear = paidInYear(contact.sessionHires, year);
   const clientPage = await clientPageUrl(id);
   const history = await clientHistory(id, user.studio.lateCancelHours);
   const [others, artists] = await Promise.all([
@@ -103,6 +109,24 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
               </ul>
             </Card>
           )}
+          {seesMoney && contact.sessionHires.length > 0 && (
+            <Card title="Session work" actions={<span className="text-sm text-gray-600">Paid in {year}: <strong>{money(paidThisYear)}</strong></span>}>
+              {paidThisYear >= CONTRACTOR_1099_LIMIT && <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900">You&apos;ve paid {contact.firstName} {money(CONTRACTOR_1099_LIMIT)} or more this year, so they&apos;ll need a 1099-NEC from you by January 31. Get a W-9 from them now if you don&apos;t have one.</p>}
+              <ul className="divide-y divide-gray-100">
+                {contact.sessionHires.map((h) => (
+                  <li key={h.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                    <Link href={`/projects/${h.project.id}`} className="link">{h.project.name}</Link>
+                    <span className="text-gray-500">{h.role}</span>
+                    <span className="ml-auto flex items-center gap-2">
+                      <Badge tone={h.signedAt ? "green" : "gray"}>{h.signedAt ? "release signed" : "release not signed"}</Badge>
+                      <Badge tone={h.paidAt ? "green" : "amber"}>{h.paidAt ? `paid ${fmtDate(h.paidAt)}` : "not paid"}</Badge>
+                      <span className="tabular-nums">{money(h.fee)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <NotesPanel parent={{ contactId: id }} path={path} />
         </div>
         <div className="space-y-6">
@@ -136,6 +160,23 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
               </form>
             )}
           </Card>
+          {seesMoney && (
+            <Card title="Payee details">
+              <p className="mb-3 text-xs text-gray-500">Typed once here and filled into split sheets, session releases and label copy. Writers and players can also add these when they sign.</p>
+              <form action={savePayee} className="space-y-3" key={`${contact.updatedAt.getTime()}`}>
+                <input type="hidden" name="id" value={id} />
+                <label className="block"><span className="label">Legal name (if different)</span><input name="legalName" defaultValue={contact.legalName ?? ""} className="input" /></label>
+                <label className="block"><span className="label">Mailing address</span><input name="address" defaultValue={contact.address ?? ""} className="input" /></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block"><span className="label">PRO</span><input name="pro" list="payee-pros" defaultValue={contact.pro ?? ""} placeholder="BMI, ASCAP…" className="input" /></label>
+                  <label className="block"><span className="label">IPI number</span><input name="ipi" defaultValue={contact.ipi ?? ""} className="input font-mono" /></label>
+                </div>
+                <datalist id="payee-pros">{PROS.map((p) => <option key={p} value={p} />)}</datalist>
+                <label className="block"><span className="label">Publisher</span><input name="publisher" defaultValue={contact.publisher ?? ""} className="input" /></label>
+                <button className="btn-secondary btn-sm">Save payee details</button>
+              </form>
+            </Card>
+          )}
           <Card title="Details">
             <ContactForm studioId={user.studioId} contact={contact} action={updateContact} submit="Save" />
             <form action={deleteContact} className="mt-4 border-t border-gray-100 pt-4">

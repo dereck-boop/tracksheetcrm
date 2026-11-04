@@ -9,12 +9,14 @@ export const NEW_CLIENT = "__new";
  */
 export type NewClientPrefill = { firstName?: string | null; lastName?: string | null; email?: string | null; phone?: string | null; notes?: string | null };
 
-export function ClientSelect({ name, options, defaultValue, placeholder = "—", label = "Client", values, prefill }: {
+export function ClientSelect({ name, options, defaultValue, placeholder = "—", label = "Client", newLabel = "+ New client…", values, prefill }: {
   name: string;
   options: { value: string; label: string }[];
   defaultValue?: string | null;
   placeholder?: string;
   label?: string;
+  /** The choice that opens the new-contact fields. */
+  newLabel?: string;
   /** Previously submitted form values, to refill the inline new-client fields. */
   values?: Record<string, string>;
   /** Details to start the new-client fields with, e.g. from an online booking request. */
@@ -45,7 +47,7 @@ export function ClientSelect({ name, options, defaultValue, placeholder = "—",
         <span className="label">{label}</span>
         <select key={initial} ref={ref} name={name} defaultValue={initial} onChange={(e) => setIsNew(e.target.value === NEW_CLIENT)} className="input">
           <option value="">{placeholder}</option>
-          <option value={NEW_CLIENT}>+ New client…</option>
+          <option value={NEW_CLIENT}>{newLabel}</option>
           {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>

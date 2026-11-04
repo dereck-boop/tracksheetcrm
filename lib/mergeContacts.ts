@@ -3,7 +3,7 @@ import { fullName } from "./format";
 
 /**
  * Folds the duplicate contact into the one being kept: every booking, project, quote,
- * invoice, note, to-do and band membership moves over, blank details are filled
+ * invoice, note, to-do, session hire and band membership moves over, blank details are filled
  * in from the duplicate, and the duplicate is deleted.
  */
 export async function mergeContacts(studioId: string, keepId: string, dupId: string) {
@@ -28,6 +28,7 @@ export async function mergeContacts(studioId: string, keepId: string, dupId: str
     await tx.invoice.updateMany(move);
     await tx.note.updateMany(move);
     await tx.task.updateMany(move);
+    await tx.sessionHire.updateMany(move);
     await tx.project.updateMany({ where: { clientId: dupId }, data: { clientId: keepId } });
     await tx.activity.updateMany({ where: { studioId, entityType: "contact", entityId: dupId }, data: { entityId: keepId } });
 
@@ -43,6 +44,11 @@ export async function mergeContacts(studioId: string, keepId: string, dupId: str
         stripeCustomerId: keep.stripeCustomerId ?? dup.stripeCustomerId,
         portalToken: keep.portalToken ?? dup.portalToken,
         source: keep.source ?? dup.source,
+        legalName: keep.legalName ?? dup.legalName,
+        address: keep.address ?? dup.address,
+        pro: keep.pro ?? dup.pro,
+        ipi: keep.ipi ?? dup.ipi,
+        publisher: keep.publisher ?? dup.publisher,
         notes: [keep.notes, dup.notes].filter(Boolean).join("\n\n") || null,
         tags: [...new Set([...keep.tags, ...dup.tags])],
       },
