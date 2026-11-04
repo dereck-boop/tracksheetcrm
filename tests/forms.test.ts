@@ -58,6 +58,7 @@ test("label copy spreadsheet has one row per split and credit, and quotes commas
   assert.equal(rows.length, 1 + 4 + 1);
   const csv = toCsv([["a,b", 'say "hi"', null]]);
   assert.equal(csv, '"a,b","say ""hi""",\r\n');
+  assert.equal(toCsv([["=HYPERLINK(1)", -12.5, "@x"]]), "'=HYPERLINK(1),-12.5,'@x\r\n");
 });
 
 test("session release fills in the player, fee and artist", () => {
