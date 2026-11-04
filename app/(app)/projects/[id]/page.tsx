@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
-import { fmtDate, fmtDateTime, fullName, money, titleCase } from "@/lib/format";
+import { canSeeMoney, requireUser } from "@/lib/auth";
+import { fmtDate, fmtDateTime, fullName, money, titleCase, toDateInput } from "@/lib/format";
+import { CREDIT_ROLES, PAY_METHODS } from "@/lib/forms";
+import { releaseLink } from "@/lib/formsSend";
+import { ClientSelect } from "@/components/ClientSelect";
+import { CopyLink } from "@/components/CopyLink";
 import { bookingTone, INACTIVE_BOOKING, invoiceTone, PROJECT_STATUSES, projectTone, quoteTone, TRACK_STAGES } from "@/lib/status";
 import { invoiceMilestone } from "../../invoices/actions";
 import { NotesPanel } from "@/components/NotesPanel";
@@ -11,7 +15,7 @@ import { TasksPanel } from "@/components/TasksPanel";
 import { Badge, Card, EmailFlash, PageHeader } from "@/components/ui";
 import { eventColor, eventWhen } from "@/lib/events";
 import {
-  addMilestone, addTrack, deleteMilestone, deleteProject, deleteTrack, setProjectStatus, setTrackStage, toggleMilestone, updateProject,
+  addHire, addMilestone, addTrack, billHire, deleteHire, deleteMilestone, deleteProject, deleteTrack, markHirePaid, saveRelease, sendRelease, setProjectStatus, setTrackStage, toggleMilestone, updateProject,
 } from "../actions";
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ emailed?: string; email_error?: string }> }) {
@@ -25,7 +29,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       artist: true,
       manager: true,
       milestones: { orderBy: [{ sortOrder: "asc" }], include: { invoice: true } },
-      tracks: { orderBy: { sortOrder: "asc" }, },
+      tracks: { orderBy: { sortOrder: "asc" }, include: { _count: { select: { splits: true } }, splits: { select: { signedAt: true } } } },
+      sessionHires: { orderBy: { createdAt: "asc" }, include: { contact: true } },
       bookings: { orderBy: { startsAt: "asc" }, include: { room: true } },
       invoices: { orderBy: { issueDate: "desc" } },
       quotes: { orderBy: { issueDate: "desc" } },
@@ -36,6 +41,10 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const path = `/projects/${id}`;
   const invoiced = p.invoices.filter((i) => i.status !== "VOID").reduce((s, i) => s + i.total, 0);
   const paid = p.invoices.reduce((s, i) => s + i.amountPaid, 0);
+  const seesMoney = canSeeMoney(user.role);
+  const paidOut = p.sessionHires.filter((h) => h.paidAt).reduce((s, h) => s + h.fee, 0);
+  const owedOut = p.sessionHires.filter((h) => !h.paidAt).reduce((s, h) => s + h.fee, 0);
+  const contacts = seesMoney ? await db.contact.findMany({ where: { studioId: user.studioId }, orderBy: { firstName: "asc" }, select: { id: true, firstName: true, lastName: true } }) : [];
   const bookedHours = p.bookings.filter((b) => !INACTIVE_BOOKING.includes(b.status)).reduce((s, b) => s + (b.endsAt.getTime() - b.startsAt.getTime()) / 36e5, 0);
   return (
     <>
@@ -60,9 +69,10 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           </form>
         ))}
       </div>
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className={`mb-6 grid gap-4 ${seesMoney ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
         <div className="card p-4"><div className="text-xs text-gray-500">Budget</div><div className="text-lg font-semibold">{p.budget ? money(p.budget) : "—"}</div></div>
         <div className="card p-4"><div className="text-xs text-gray-500">Invoiced / paid</div><div className="text-lg font-semibold">{money(invoiced)} <span className="text-sm font-normal text-gray-500">/ {money(paid)}</span></div></div>
+        {seesMoney && <div className="card p-4"><div className="text-xs text-gray-500">Paid out / you keep</div><div className="text-lg font-semibold">{money(paidOut)} <span className="text-sm font-normal text-gray-500">/ {money(paid - paidOut)}</span></div>{owedOut > 0 && <div className="text-xs text-amber-700">{money(owedOut)} still to pay players</div>}</div>}
         <div className="card p-4"><div className="text-xs text-gray-500">Booked hours</div><div className="text-lg font-semibold">{bookedHours.toFixed(1)}</div></div>
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
@@ -106,6 +116,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
                   <span className="w-6 text-gray-400">{i + 1}</span>
                   <span className="flex-1">
                     <Link href={`/projects/${id}/songs/${t.id}`} className="font-medium link">{t.title}</Link>
+                    {t.isrc && <span className="ml-2 font-mono text-[11px] text-gray-400">{t.isrc}</span>}
+                    {t._count.splits > 0 && <span className="ml-2 text-[11px] text-gray-500">{t.splits.every((x) => x.signedAt) ? "split signed" : "split not signed"}</span>}
                   </span>
                   <div className="flex gap-0.5">
                     {TRACK_STAGES.map((s) => (
@@ -126,6 +138,76 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               <input type="hidden" name="projectId" value={id} />
               <input aria-label="Song title" name="title" required placeholder="Song title" className="input" />
               <button className="btn-secondary">Add</button>
+            </form>
+          </Card>
+          {seesMoney && (
+            <Card title="Session players">
+              <p className="mb-3 text-sm text-gray-600">Musicians and singers you hire for a flat fee. Each gets a short release (work for hire) to sign on their phone, and their fee counts as money paid out on this project and on their contact.</p>
+              {p.sessionHires.length > 0 && (
+                <ul className="mb-4 divide-y divide-gray-100">
+                  {p.sessionHires.map((h) => (
+                    <li key={h.id} className="space-y-2 py-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{h.contactId ? <Link href={`/contacts/${h.contactId}`} className="link">{h.name}</Link> : h.name}</span>
+                        <span className="text-gray-500">{h.role}{h.workDate && ` · ${fmtDate(h.workDate)}`}</span>
+                        <span className="ml-auto font-medium tabular-nums">{money(h.fee)}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {h.signedAt ? <Badge tone="green">release signed {fmtDate(h.signedAt)}</Badge> : h.sentAt ? <Badge tone="blue">release sent</Badge> : <Badge>release not sent</Badge>}
+                        {h.paidAt ? <Badge tone="green">paid {fmtDate(h.paidAt)}{h.paidMethod && ` · ${h.paidMethod}`}</Badge> : <Badge tone="amber">not paid</Badge>}
+                        {h.invoiceId && <Link href={`/invoices/${h.invoiceId}`}><Badge tone="blue">on client invoice</Badge></Link>}
+                        <span className="ml-auto flex flex-wrap items-center gap-2">
+                          <a href={releaseLink(h.token)} target="_blank" rel="noreferrer" className="text-xs link">View release</a>
+                          {!h.signedAt && <CopyLink url={releaseLink(h.token)} label="Link" />}
+                          {!h.signedAt && <form action={sendRelease}><input type="hidden" name="id" value={h.id} /><button className="text-xs link" disabled={!h.contact?.email}>{h.sentAt ? "Email again" : "Email to sign"}</button></form>}
+                          {!h.invoiceId && h.fee > 0 && <form action={billHire}><input type="hidden" name="id" value={h.id} /><button className="text-xs link">Bill the client</button></form>}
+                          {!h.signedAt && !h.paidAt && <form action={deleteHire}><input type="hidden" name="id" value={h.id} /><button className="text-xs text-red-600">Remove</button></form>}
+                        </span>
+                      </div>
+                      {h.paidAt ? (
+                        <form action={markHirePaid}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="undo" value="1" /><button className="text-xs text-gray-500 underline">Undo payment</button></form>
+                      ) : (
+                        <form action={markHirePaid} className="flex flex-wrap items-center gap-2">
+                          <input type="hidden" name="id" value={h.id} />
+                          <input aria-label="Date paid" name="paidAt" type="date" defaultValue={toDateInput(new Date())} className="input w-auto" />
+                          <select aria-label="How you paid" name="paidMethod" className="input w-auto" defaultValue="">
+                            <option value="">How you paid…</option>
+                            {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
+                          </select>
+                          <button className="btn-secondary btn-sm">Mark paid</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <details open={p.sessionHires.length === 0} className="rounded-md border border-gray-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium">Hire a player</summary>
+                <form action={addHire} className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <input type="hidden" name="projectId" value={id} />
+                  <ClientSelect name="contactId" label="Who" newLabel="+ New person…" options={contacts.map((c) => ({ value: c.id, label: fullName(c) }))} />
+                  <label className="block"><span className="label">What they played or sang</span><input name="role" required list="hire-roles" placeholder="Bass, Background vocals…" className="input" /></label>
+                  <datalist id="hire-roles">{CREDIT_ROLES.map((r) => <option key={r} value={r} />)}</datalist>
+                  <label className="block"><span className="label">Flat fee ($)</span><input name="fee" inputMode="decimal" required className="input" /></label>
+                  <label className="block"><span className="label">Session date</span><input name="workDate" type="date" className="input" /></label>
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="credit" defaultChecked={p.tracks.length > 0} /> Credit them on every song ({p.tracks.length})</label>
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="send" defaultChecked /> Email them the release to sign now</label>
+                  <div className="sm:col-span-2"><button className="btn-primary">Hire</button></div>
+                </form>
+              </details>
+            </Card>
+          )}
+          <Card title="Release info" actions={<Link href={`/projects/${id}/label-copy`} className="text-sm link">Label copy</Link>}>
+            <p className="mb-3 text-sm text-gray-600">Typed once, used on the label copy, credits and every song&apos;s paperwork.</p>
+            <form action={saveRelease} className="grid gap-3 sm:grid-cols-2" key={`${p.updatedAt.getTime()}`}>
+              <input type="hidden" name="id" value={id} />
+              <label className="block"><span className="label">Label (blank = self-released)</span><input name="label" defaultValue={p.label ?? ""} className="input" /></label>
+              <label className="block"><span className="label">Release date</span><input name="releaseDate" type="date" defaultValue={toDateInput(p.releaseDate)} className="input" /></label>
+              <label className="block"><span className="label">UPC / barcode</span><input name="upc" inputMode="numeric" defaultValue={p.upc ?? ""} placeholder="From your distributor" className="input font-mono" /></label>
+              <span className="hidden sm:block" />
+              <label className="block"><span className="label">℗ line (who owns the recordings)</span><input name="pLine" defaultValue={p.pLine ?? ""} placeholder={`${new Date().getFullYear()} ${p.artist?.name ?? "Artist name"}`} className="input" /></label>
+              <label className="block"><span className="label">© line (artwork and packaging)</span><input name="cLine" defaultValue={p.cLine ?? ""} placeholder={`${new Date().getFullYear()} ${p.artist?.name ?? "Artist name"}`} className="input" /></label>
+              <div className="sm:col-span-2"><button className="btn-secondary btn-sm">Save release info</button></div>
             </form>
           </Card>
           <Card title="Sessions">

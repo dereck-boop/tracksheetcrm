@@ -4,13 +4,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
-import { fullName } from "@/lib/format";
 import { headers } from "next/headers";
 import { req, str } from "@/lib/form";
 import { dueNow } from "@/lib/invoices";
 import { invoiceFromQuote, quoteAgreement } from "@/lib/quotes";
 import { sendInvoiceEmail } from "@/lib/invoiceEmail";
-import { notifyStudio } from "@/lib/email";
+import { notifyStudio, sendTemplate } from "@/lib/email";
+import { fullName, money } from "@/lib/format";
+import { sessionReleaseText } from "@/lib/forms";
+import { matchContact, splitLink } from "@/lib/formsSend";
 import { appUrl, stripe } from "@/lib/stripe";
 
 /**
@@ -90,7 +92,62 @@ async function payInvoice(fd: FormData) {
   redirect(session.url!);
 }
 
+const clientIp = async () => (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
+/** Tell the studio's owners and admins in the app. */
+async function notifyAdmins(studioId: string, title: string, href: string) {
+  const admins = await db.user.findMany({ where: { studioId, active: true, role: { in: ["OWNER", "ADMIN"] } } });
+  await db.notification.createMany({ data: admins.map((u) => ({ studioId, userId: u.id, title, href })) });
+}
+
+/**
+ * A writer signs their line of a split sheet. A PRO or IPI they add is also saved on their contact
+ * when it's blank there. When the last one signs, everyone gets a copy.
+ */
+async function signSplit(fd: FormData) {
+  const token = req(fd, "token");
+  const me = await db.trackSplit.findUnique({ where: { token }, include: { track: { include: { project: { include: { artist: true } } } } } });
+  if (!me || me.signedAt) return;
+  if (fd.get("agree") === null) throw new Error("Please tick the box to agree to the split.");
+  const t = me.track;
+  const studioId = t.project.studioId;
+  const pro = str(fd, "pro") ?? me.pro;
+  const ipi = str(fd, "ipi") ?? me.ipi;
+  await db.trackSplit.update({ where: { id: me.id }, data: { signedAt: new Date(), signedName: req(fd, "name", "Your name"), signedIp: await clientIp(), pro, ipi } });
+  const c = await matchContact(studioId, me.name, me.email);
+  if (c && ((!c.pro && pro) || (!c.ipi && ipi))) await db.contact.update({ where: { id: c.id }, data: { pro: c.pro ?? pro, ipi: c.ipi ?? ipi } });
+  await logActivity({ studioId, entityType: "project", entityId: t.projectId, action: "signed", summary: `${me.name} signed the split sheet for “${t.title}”` });
+  const all = await db.trackSplit.findMany({ where: { trackId: t.id } });
+  if (all.every((s) => s.signedAt)) {
+    await notifyAdmins(studioId, `Split sheet signed by everyone: ${t.title}`, `/projects/${t.projectId}/songs/${t.id}`);
+    for (const s of all) {
+      if (s.email) await sendTemplate({ studioId, key: "split_sheet_done", to: s.email, entity: { type: "project", id: t.projectId }, vars: { client_name: s.name.split(" ")[0], song: t.title, artist: t.project.artist?.name ?? t.project.name, link: splitLink(s.token) } });
+    }
+  }
+  revalidatePath(`/split/${token}`);
+}
+
+/** A session player signs their release. The exact text they read is saved with the signature. */
+async function signRelease(fd: FormData) {
+  const token = req(fd, "token");
+  const h = await db.sessionHire.findUnique({ where: { token }, include: { contact: true, studio: true, project: { include: { artist: true, client: true } } } });
+  if (!h || h.signedAt) return;
+  if (fd.get("agree") === null) throw new Error("Please tick the box to agree to the release.");
+  const legalName = str(fd, "legalName");
+  const address = str(fd, "address");
+  if (h.contact && ((!h.contact.legalName && legalName) || (!h.contact.address && address))) {
+    await db.contact.update({ where: { id: h.contact.id }, data: { legalName: h.contact.legalName ?? legalName, address: h.contact.address ?? address } });
+  }
+  const text = sessionReleaseText(h.studio.sessionReleaseText, { ...h, legalName: legalName ?? h.contact?.legalName }, h.project, h.studio.name, (c) => money(c, h.studio.currency));
+  await db.sessionHire.update({ where: { id: h.id }, data: { signedAt: new Date(), signedName: req(fd, "name", "Your name"), signedIp: await clientIp(), signedText: text } });
+  await logActivity({ studioId: h.studioId, entityType: "project", entityId: h.projectId, action: "signed", summary: `${h.name} signed their session release` });
+  await notifyAdmins(h.studioId, `Session release signed: ${h.name}`, `/projects/${h.projectId}`);
+  revalidatePath(`/release/${token}`);
+}
+
 // Thrown errors show as a message on the page instead of a crash screen.
 const respondToQuoteAction = safe(respondToQuote);
 const payInvoiceAction = safe(payInvoice);
-export { respondToQuoteAction as respondToQuote, payInvoiceAction as payInvoice };
+const signSplitAction = safe(signSplit);
+const signReleaseAction = safe(signRelease);
+export { respondToQuoteAction as respondToQuote, payInvoiceAction as payInvoice, signSplitAction as signSplit, signReleaseAction as signRelease };

@@ -29,3 +29,12 @@ export function parseCsvObjects(text: string): Record<string, string>[] {
   const keys = header.map((h) => h.trim());
   return rows.map((r) => Object.fromEntries(keys.map((k, i) => [k, (r[i] ?? "").trim()])));
 }
+
+/** Rows to CSV text, quoting where needed. Empty cells for null/undefined. */
+export function toCsv(rows: (string | number | null | undefined)[][]): string {
+  const cell = (v: string | number | null | undefined) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
+}

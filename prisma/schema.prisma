@@ -47,6 +47,8 @@ model Studio {
   // Client paperwork and follow-ups
   // Backups and Google Calendar
   backupWeekly         Boolean   @default(true) // email a backup of the data every Monday
+  // Forms: the session player release text (empty = the built-in one in lib/forms.ts)
+  sessionReleaseText   String?
   lastBackupAt         DateTime?
   // Growth: content, social, audience
   createdAt            DateTime  @default(now())
@@ -70,6 +72,7 @@ model Studio {
   bookingSeries  BookingSeries[]
   emailTemplates EmailTemplate[]
   notifications  Notification[]
+  sessionHires   SessionHire[]
 }
 
 enum Role {
@@ -127,6 +130,12 @@ model Contact {
   notes                String?
   tags                 String[]
   source               String? // how they found the studio: Instagram, referral, website…
+  // Payee details: typed once, filled into split sheets, releases, label copy and tax forms
+  legalName            String? // name on contracts and tax forms, if different
+  address              String?
+  pro                  String? // BMI, ASCAP, SESAC…
+  ipi                  String? // writer's IPI / CAE number
+  publisher            String?
   // Producers and engineers who send the studio work: their own private page (/producer/<token>); null = no access
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
@@ -138,6 +147,7 @@ model Contact {
   invoices      Invoice[]
   noteLog       Note[]
   tasks         Task[]
+  sessionHires  SessionHire[]
 
   @@index([studioId, lastName])
   @@index([studioId, email])
@@ -341,6 +351,12 @@ model Project {
   dueDate         DateTime?
   budget          Int? // cents
   description     String?
+  // Release info for label copy and distributors
+  label           String? // record label, or empty for self-released
+  upc             String?
+  releaseDate     DateTime?
+  pLine           String? // ℗ line: who owns the recordings, e.g. "2026 Artist Name"
+  cLine           String? // © line: who owns the artwork and packaging
   // Who sent this one project when it isn't the artist's usual producer (empty = the artist's "Sent by")
   // What the studio did on the project, for the credit line in credits and the release kit
   // Wrap-up and session file archive
@@ -356,6 +372,7 @@ model Project {
   tracks       Track[]
   noteLog      Note[]
   events       Event[]
+  sessionHires SessionHire[]
 
   @@index([studioId, status])
 }
@@ -387,14 +404,82 @@ model Track {
   bpm       Int?
   key       String?
   notes     String?
+  isrc      String?
+  duration  Int? // seconds
+  explicit  Boolean  @default(false)
+  featuring String? // featured artists, as they should appear on the release
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  credits TrackCredit[]
+  splits  TrackSplit[]
 }
 
 // Who did what on a song (recording engineer, mixer, bass…), for liner notes and release metadata
+model TrackCredit {
+  id        String @id @default(cuid())
+  trackId   String
+  track     Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  name      String
+  role      String
+  sortOrder Int    @default(0)
+
+  @@index([trackId])
+}
+
 // Songwriting / publishing split sheet entry; each writer signs their own link
+model TrackSplit {
+  id         String    @id @default(cuid())
+  trackId    String
+  track      Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  name       String
+  email      String?
+  role       String    @default("Writer") // Writer, Composer, Lyricist, Producer, Publisher
+  percent    Decimal   @db.Decimal(5, 2)
+  pro        String? // BMI, ASCAP, SESAC…
+  ipi        String? // writer's IPI / CAE number
+  publisher  String?
+  token      String    @unique @default(cuid())
+  sentAt     DateTime?
+  signedAt   DateTime?
+  signedName String?
+  signedIp   String?
+  createdAt  DateTime  @default(now())
+
+  @@index([trackId])
+}
+
+// A session musician or vocalist hired on a project: their signed release (work for hire) and
+// the flat fee paid to them, which counts as money out on the project and on their contact.
+model SessionHire {
+  id          String    @id @default(cuid())
+  studioId    String
+  studio      Studio    @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  name        String // as of hiring, so the release still reads right if the contact is deleted
+  role        String // what they played or sang
+  fee         Int       @default(0) // cents
+  workDate    DateTime?
+  token       String    @unique @default(cuid())
+  sentAt      DateTime?
+  signedAt    DateTime?
+  signedName  String?
+  signedIp    String?
+  signedText  String? // the exact release they signed
+  paidAt      DateTime?
+  paidMethod  String?
+  invoiceId   String? // the client invoice this fee was passed on to
+  createdAt   DateTime  @default(now())
+
+  @@index([studioId, paidAt])
+  @@index([projectId])
+  @@index([contactId])
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
