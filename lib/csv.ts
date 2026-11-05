@@ -33,7 +33,10 @@ export function parseCsvObjects(text: string): Record<string, string>[] {
 /** Rows to CSV text, quoting where needed. Empty cells for null/undefined. */
 export function toCsv(rows: (string | number | null | undefined)[][]): string {
   const cell = (v: string | number | null | undefined) => {
-    const s = v == null ? "" : String(v);
+    let s = v == null ? "" : String(v);
+    // Text starting with = + - @ would run as a formula in Excel or Sheets (a writer signing a split sheet
+    // could type one). A leading apostrophe shows it as plain text. Plain numbers like -12.50 are left alone.
+    if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
